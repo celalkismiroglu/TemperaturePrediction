@@ -1,0 +1,67 @@
+daily_data_df = pd.read_csv("prediction1_1.csv")
+column = ["DateTime","Temperature Prediction","Temperature (C)"]
+dailylookback = 24 #saatte bir bakıyoruz!
+daily_data_oneWeekAhead = daily_data_df.iloc[dailylookback:(8*dailylookback + 1)][column]
+daily_data_oneWeekAhead.reset_index(drop=True)
+
+
+error = abs(daily_data_oneWeekAhead["Temperature (C)"] - daily_data_oneWeekAhead["Temperature Prediction"])
+daily_data_oneWeekAhead["Error"] = error
+daily_data_oneWeekAhead
+daily_data_oneWeekAhead.reset_index(drop=True)
+plt.hist(daily_data_oneWeekAhead["Error"], bins = 10)
+plt.grid(linestyle="--")
+plt.xlabel("Error")
+plt.ylabel("Frequency")
+plt.show()
+
+daily_data_df = pd.read_csv("prediction1_1.csv")
+column = ["DateTime","Temperature Prediction","Temperature (C)"]
+dailylookback = 24 #saatte bir bakıyoruz!
+daily_data_oneWeekAhead_plot1_1 = daily_data_df.iloc[dailylookback:8*dailylookback][column]
+daily_data_oneWeekAhead_plot1_1 = daily_data_oneWeekAhead_plot1_1.set_index('DateTime')
+daily_data_oneWeekAhead_plot1_1.plot(y=["Temperature (C)", "Temperature Prediction"],figsize=(18,7))
+plt.xlabel("Date")
+plt.ylabel("Temperature (C)")
+plt.grid(linestyle="--")
+plt.show()
+
+daily_data_oneWeekAhead = daily_data_oneWeekAhead.reset_index(drop=True)
+
+histogram_error = []
+for i in range(24):
+    sum_error = 0
+    for j in range (i, len(daily_data_oneWeekAhead), 24):
+        sum_error = sum_error + daily_data_oneWeekAhead.iloc[j,3]
+        index = index + 1
+    histogram_error.append(sum_error)
+
+fig, ax = plt.subplots()
+fig.set_size_inches(10,5)
+plt.xlabel('Hour')
+plt.ylabel('Error')
+hist, xbins, ybins, im = \
+ax.hist2d(np.array(daily_data_oneWeekAhead.index), \
+np.array(daily_data_oneWeekAhead["Error"]), \
+bins=(24, 10), cmap=plt.cm.jet)
+for i in range(len(ybins)-1):
+    for j in range(len(xbins)-1):
+        ax.text(xbins[j] + 1.5,ybins[i] + 0.1, hist.T[i,j], 
+                color="w", ha="center", va="center", fontweight="bold", fontsize='x-small')
+
+hst_df = pd.DataFrame(histogram_error, columns = ["Error"])
+
+fig, ax = plt.subplots()
+fig.set_size_inches(10,5)
+plt.xlabel('Hour')
+plt.ylabel('Error')
+hist, xbins, ybins, im = \
+ax.hist2d(np.array(hst_df.index), \
+np.array(hst_df["Error"]), \
+bins=(24, 10), cmap=plt.cm.jet)
+for i in range(len(ybins)-1):
+    for j in range(len(xbins)-1):
+        ax.text(xbins[j] + 0.5,ybins[i] + 0.5, hist.T[i,j], 
+                color="w", ha="center", va="center", fontweight="bold", fontsize='x-small')       
+        
+plt.show()
