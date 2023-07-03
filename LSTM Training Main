@@ -1,0 +1,171 @@
+# Main Code
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, TensorDataset
+import matplotlib.pyplot as plt
+from sklearn.metrics import r2_score
+from torch.nn.functional import normalize
+import pandas as pd
+from torch.utils.data import TensorDataset, DataLoader
+import tkinter
+import matplotlib
+matplotlib.use('TkAgg')
+from torch import nn
+from torch.nn import functional as F
+from tqdm import tqdm
+import gc
+from torch.optim import Adam
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+import seaborn as sns
+
+data_df = pd.read_csv("temperature_predictionLSTM.csv")
+data_df["DateTime"] = pd.to_datetime(data_df["date"])
+data_df = data_df.set_index('DateTime')
+data_df.columns = [col.strip() for col in data_df.columns]
+
+#print("Columns : {}".format(data_df.columns.values.tolist()))
+#print("Dataset Shape : {}".format(data_df.shape))
+
+#feature_cols = ['T1', 'RH_1', 'Press_mm_hg', 'Windspeed', 'Tdewpoint']
+feature_cols = ['Temperature (C)', 'Humidity', 'Pressure']
+target_col = 'Temperature (C)'
+
+X = data_df[feature_cols].values
+Y = data_df[target_col].values
+
+n_features = X.shape[1]
+lookback = 24 ## 24 hours lookback to make prediction
+
+X_organized, Y_organized = [], []
+for i in range(0, X.shape[0]-lookback, 1):
+    X_organized.append(X[i:i+lookback])
+    Y_organized.append(Y[i+lookback])
+
+train_size = int((X.shape[0])*0.95)
+
+X_organized, Y_organized = np.array(X_organized), np.array(Y_organized)
+X_organized, Y_organized = torch.tensor(X_organized, dtype=torch.float32), torch.tensor(Y_organized, dtype=torch.float32)
+X_train, Y_train, X_test, Y_test = X_organized[:train_size], Y_organized[:train_size], X_organized[train_size:], Y_organized[train_size:]
+
+
+X_organized.shape, Y_organized.shape, X_train.shape, Y_train.shape, X_test.shape, Y_test.shape
+
+mean, std = Y_train.mean(), Y_train.std()
+
+#print("Mean : {:.2f}, Standard Deviation : {:.2f}".format(mean, std))
+Y_train_scaled, Y_test_scaled = (Y_train - mean)/std , (Y_test - mean)/std
+#X_train_scaled, X_test_scaled = (X_train - X_train.min())/(X_train.max()-X_train.min()) , (X_test - X_test.min())/(X_test.max()-X_test.min())
+
+#Y_train_scaled.min(), Y_train_scaled.max(), Y_test_scaled.min(), Y_test_scaled.max()
+
+
+train_dataset = TensorDataset(X_train, Y_train_scaled)
+test_dataset  = TensorDataset(X_test,  Y_test_scaled)
+
+train_loader = DataLoader(train_dataset, shuffle=False, batch_size = 64)
+test_loader  = DataLoader(test_dataset,  shuffle=False, batch_size = 64)
+
+
+hidden_dim = 128
+n_layers = 2
+
+class LSTMRegressor(nn.Module):
+    def __init__(self):
+        super(LSTMRegressor, self).__init__()
+        self.lstm = nn.LSTM(input_size=n_features, hidden_size=hidden_dim, num_layers=n_layers, batch_first=True)
+        self.linear = nn.Linear(hidden_dim, 1)
+
+    def forward(self, X_batch):
+        hidden, carry = torch.randn(n_layers, len(X_batch), hidden_dim), torch.randn(n_layers, len(X_batch), hidden_dim)
+        output, (hidden, carry) = self.lstm(X_batch, (hidden, carry))
+        return self.linear(output[:,-1])
+    
+lstm_regressor = LSTMRegressor()
+
+lstm_regressor
+
+for layer in lstm_regressor.children():
+    print("Layer : {}".format(layer))
+    print("Parameters : ")
+    for param in layer.parameters():
+        print(param.shape)
+    print()
+    
+out = lstm_regressor(torch.randn(hidden_dim, lookback, n_features))
+
+out.shape
+
+
+def CalcValLoss(model, loss_fn, val_loader):
+    print_validlosses = 0
+    with torch.no_grad():
+        losses = []
+        for X, Y in val_loader:
+            preds = model(X)
+            loss = loss_fn(preds.ravel(), Y)
+            losses.append(loss.item())
+        print("Valid Loss : {:.3f}".format(torch.tensor(losses).mean()))
+        print_validlosses = torch.tensor(losses).mean().numpy()
+    return print_validlosses
+
+def TrainModel(model, loss_fn, optimizer, train_loader, val_loader, epochs=20):
+    train_losses = []
+    valid_losses = []
+    valid_value = 0
+    for i in range(1, epochs+1):
+        losses = []
+        for X, Y in tqdm(train_loader):
+            Y_preds = model(X)
+
+            loss = loss_fn(Y_preds.ravel(), Y)
+            losses.append(loss.item())
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+ 
+        print("Train Loss : {:.3f}".format(torch.tensor(losses).mean()))
+        valid_value = CalcValLoss(model, loss_fn, val_loader)
+        valid_losses.append(valid_value)
+        train_losses.append(torch.tensor(losses).mean().tolist())
+        
+    return train_losses, valid_losses
+
+epochs = 10
+learning_rate = 1e-4
+
+loss_fn = nn.MSELoss()
+lstm_regressor = LSTMRegressor()
+optimizer = Adam(lstm_regressor.parameters(), lr=learning_rate)
+
+TrainLosses, ValidLosses=TrainModel(lstm_regressor, loss_fn, optimizer, train_loader, test_loader, epochs)
+
+plt.plot(TrainLosses, label = "Train Loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.grid(linestyle="--")
+plt.legend()
+plt.show()
+plt.plot(ValidLosses, label = "Valid Loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.grid(linestyle="--")
+plt.legend()
+plt.show()
+
+plt.plot(TrainLosses, label = "Train Loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend()
+plt.grid(linestyle="--")
+
+plt.plot(ValidLosses, label = "Valid Loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.grid(linestyle="--")
+plt.legend()
+plt.show()
