@@ -1,0 +1,26 @@
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+test_preds = lstm_regressor(X_test)
+test_preds2_1 = test_preds*(std) + mean
+
+data_df = pd.read_csv('temperature_predictionLSTM.csv')
+data_df["DateTime"] = pd.to_datetime(data_df["date"])
+data_df = data_df.set_index('DateTime')
+data_df.drop('date',axis=1, inplace=True)
+data_df.columns = [col.strip() for col in data_df.columns]
+
+data_df_final2_1 = data_df[train_size:].copy()
+
+data_df_final2_1["Temperature Prediction"] = [None]*lookback + test_preds2_1.detach().numpy().squeeze().tolist()
+
+print(data_df_final2_1.tail())
+
+print("------------------------------------------------------------------------------------------------------------")
+
+print("Test  MSE : {:.2f}".format(mean_squared_error(test_preds2_1.detach().numpy().squeeze(), Y_test.detach().numpy())))
+print("Test  MAE : {:.2f}".format(mean_absolute_error(test_preds2_1.detach().numpy().squeeze(), Y_test.detach().numpy())))
+
+data_df_final2_1.plot(y=["Temperature (C)", "Temperature Prediction"],figsize=(18,7))
+plt.grid(which='minor', linestyle=':', linewidth='0.5', color='black')
+plt.xlabel("Date")
+plt.ylabel("Temperature (C)")
+plt.show()
